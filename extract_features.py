@@ -12,8 +12,11 @@ def extract_features(
     output_dir,
     batch_size,
     num_workers,
+    part,
     device="cuda",
 ):
+    part_number, total_parts = map(int, part.split("."))  # Convert to integers
+    part_number = part_number - 1
     """Extract features from Food101 dataset with specified augmentations"""
     # Create output directory if it doesn't exist
     output_dir = Path(output_dir)
@@ -38,8 +41,23 @@ def extract_features(
         dataset = Food101(
             root="data/food101", split=split, download=True, transform=transform
         )
+
+        # Split the dataset into parts
+        total_samples = len(dataset)
+        samples_per_part = total_samples // total_parts
+        start_idx = part_number * samples_per_part
+        end_idx = (
+            start_idx + samples_per_part
+            if part_number < total_parts - 1
+            else total_samples
+        )
+
+        # Subset the dataset for this part
+        subset_indices = list(range(start_idx, end_idx))
+        subset = torch.utils.data.Subset(dataset, subset_indices)
+
         dataloader = DataLoader(
-            dataset,
+            subset,
             batch_size=batch_size,
             shuffle=False,
             num_workers=num_workers,
@@ -60,8 +78,14 @@ def extract_features(
             augmentations = [lambda x: x]
 
         # Begin feature extraction
-        feature_file = output_dir / f"food101_{split}_features.npy"
-        labels_file = output_dir / f"food101_{split}_labels.npy"
+        feature_file = (
+            output_dir
+            / f"food101_{split}_part{part_number+1}_of_{total_parts}_features.npy"
+        )
+        labels_file = (
+            output_dir
+            / f"food101_{split}_part{part_number+1}_of_{total_parts}_labels.npy"
+        )
         all_features = []
         all_labels = []
 
@@ -81,9 +105,28 @@ def extract_features(
         print(f"Features shape: {all_features.shape}")
         print(f"Labels shape: {all_labels.shape}")
 
-        print(f"Saving {len(all_features)} features for {split} set...")
+        print(
+            f"Saving {len(all_features)} features for {split} set, part {part_number+1}..."
+        )
         np.save(feature_file, all_features)
         np.save(labels_file, all_labels)
+
+
+def unify_features(part, output):
+    _, total_parts = map(int, part.split("."))  # Convert to integers
+    for array_name in ["features", "labels"]:
+        for split in ["train", "test"]:
+            data_list = []
+            for part in range(1, total_parts + 1):
+                filepath = (
+                    Path(output)
+                    / f"food101_{split}_part{part}_of_{total_parts}_{array_name}.npy"
+                )
+                data = np.load(filepath)
+                data_list.append(data)
+            new_data = np.concatenate(data_list, axis=0)
+            outpath = Path(output) / f"food101_{split}_{array_name}.npy"
+            np.save(outpath, new_data)
 
 
 if __name__ == "__main__":
@@ -100,12 +143,22 @@ if __name__ == "__main__":
     parser.add_argument(
         "--device", type=str, default="cuda", help="Device to use (cuda or cpu)"
     )
+    parser.add_argument(
+        "--part", type=str, default="1.1", help="Process part n of m with notation n.m"
+    )
+    parser.add_argument(
+        "--unify", action="store_true", help="Put parts in single files"
+    )
 
     args = parser.parse_args()
 
-    extract_features(
-        output_dir=args.output,
-        batch_size=args.batch_size,
-        num_workers=args.num_workers,
-        device=args.device,
-    )
+    if args.unify:
+        unify_features(part=args.part, output=args.output)
+    else:
+        extract_features(
+            output_dir=args.output,
+            batch_size=args.batch_size,
+            num_workers=args.num_workers,
+            part=args.part,
+            device=args.device,
+        )
