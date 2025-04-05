@@ -1,3 +1,4 @@
+from pathlib import Path
 import numpy as np
 import torch
 import torch.nn as nn
@@ -11,6 +12,7 @@ def main(
     epochs=10,
     learning_rate=0.001,
     device="cuda" if torch.cuda.is_available() else "cpu",
+    path_to_diet_checkpoint=None,
 ):
     # Load the data
     train_features = np.load(
@@ -46,6 +48,18 @@ def main(
         test_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers
     )
 
+    if path_to_diet_checkpoint is not None and Path(path_to_diet_checkpoint).exists():
+        from diet import ShallowMLP
+
+        diet_model = ShallowMLP(train_features.shape[1])
+        diet_model.load_state_dict(
+            torch.load(path_to_diet_checkpoint, map_location="cpu")
+        )
+        diet_model = diet_model.to(device)
+        do_diet = True
+    else:
+        do_diet = False
+
     # Define the linear classifier
     class LinearClassifier(nn.Module):
         def __init__(self, input_size, num_classes):
@@ -72,6 +86,8 @@ def main(
             optimizer.zero_grad()
             features = features.to(device, non_blocking=True)
             labels = labels.to(device, non_blocking=True)
+            if do_diet:
+                features = diet_model(features)
             outputs = model(features)
             loss = criterion(outputs, labels.view(-1))
             loss.backward()
