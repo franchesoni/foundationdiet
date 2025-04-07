@@ -50,9 +50,9 @@ class ShallowMLP(nn.Module):
         self.relu = nn.ReLU()
 
     def forward(self, x):
-        x = self.relu(self.l1(x))
-        x = self.relu(self.l2(x))
-        return x
+        out = self.relu(self.l1(x))
+        out = self.l2(out) + x  # residual
+        return out
 
 
 def main(
@@ -96,7 +96,7 @@ def main(
     # Define loss function and optimizer
     criterion = nn.CrossEntropyLoss(label_smoothing=0.8)
     optimizer = optim.AdamW(
-        list(model.parameters()) + list(W.parameters()), lr=learning_rate
+        list(model.parameters()) + list(W.parameters()), lr=learning_rate, weight_decay=0.05
     )
     scheduler = optim.lr_scheduler.OneCycleLR(
         optimizer,
