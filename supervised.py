@@ -49,7 +49,7 @@ def main(
     )
 
     if path_to_diet_checkpoint is not None and Path(path_to_diet_checkpoint).exists():
-        from diet import ShallowMLP
+        from diet_shallow import ShallowMLP
 
         diet_model = ShallowMLP(train_features.shape[1])
         diet_model.load_state_dict(
