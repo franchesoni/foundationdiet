@@ -28,7 +28,8 @@ def main(
     batch_size=48,
     num_workers=48,
     epochs=10,
-    learning_rate=0.001,
+    learning_rate_backbone=0.001,
+    learning_rate_W=0.0001,
     weight_decay_backbone=0.05,
     weight_decay_W=0.05,
     device="cuda" if torch.cuda.is_available() else "cpu",
@@ -79,21 +80,21 @@ def main(
     criterion_sup = nn.CrossEntropyLoss()
     backbone_optimizer = optim.AdamW(
         model.get_trainable_params(),
-        lr=learning_rate,
+        lr=learning_rate_backbone,
         weight_decay=weight_decay_backbone,
     )
     len_train_loader = len(train_loader)
     backbone_scheduler = optim.lr_scheduler.OneCycleLR(
         backbone_optimizer,
-        max_lr=learning_rate,
+        max_lr=learning_rate_backbone,
         total_steps=len_train_loader * epochs,
         pct_start=0.05,
     )
     sup_head_optimizer = optim.Adam(
-        sup_W.parameters(), lr=learning_rate, weight_decay=weight_decay_W
+        sup_W.parameters(), lr=learning_rate_W, weight_decay=weight_decay_W
     )
     W_optimizer = optim.Adam(
-        W.parameters(), lr=learning_rate, weight_decay=weight_decay_W
+        W.parameters(), lr=learning_rate_W, weight_decay=weight_decay_W
     )
 
     # Training loop
@@ -147,8 +148,14 @@ def main(
                 f"SelfSupLoss={loss.item():.6f}, SupLoss={sup_loss.item():.6f}",
                 end="\r",
             )
-            writer.add_scalar('loss/ssl', loss_item, step=step + epoch * len_train_loader)
-            writer.add_scalar('loss/sup', sup_loss_item, step=step + epoch * len_train_loader)
+            writer.add_scalar(
+                "loss/ssl", loss_item, global_step=step + epoch * len_train_loader
+            )
+            writer.add_scalar(
+                "loss/sup", sup_loss_item, global_step=step + epoch * len_train_loader
+            )
+            current_lr = backbone_optimizer.param_groups[0]["lr"]
+            writer.add_scalar('lr/backbone', current_lr, global_step=step + epoch * len_train_loader)
         print(
             f"Epoch {epoch+1}/{epochs}, "
             f"SelfSupLoss: {running_loss/len_train_loader:.4f}, "
