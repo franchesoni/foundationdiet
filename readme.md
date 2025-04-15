@@ -10,6 +10,9 @@
     launched (batch_size=192, lr=0.01, epochs=1000) 
     `Test Accuracy: 0.661532` <- worked better but didn't work 
 
+so the first trial, which was ssling a shallow projector, didn't work
+our second trial is finetuning (using vfpt) the backbone
+
 
 
    
