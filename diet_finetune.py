@@ -1,6 +1,7 @@
 import os
 
 os.environ["HF_ENDPOINT"] = "https://hf-mirror.com"
+from pathlib import Path
 import timm
 import torch
 import torch.nn as nn
@@ -16,6 +17,7 @@ from torchvision.transforms.v2 import (
     PILToTensor,
 )
 from torch.utils.tensorboard import SummaryWriter
+from sing import SING
 
 
 class Food101Index(Food101):
@@ -30,7 +32,7 @@ def main(
     epochs=10,
     learning_rate_backbone=0.001,
     learning_rate_W=0.0001,
-    weight_decay_backbone=0.05,
+    weight_decay_backbone=0.005,
     weight_decay_W=0.05,
     device="cuda" if torch.cuda.is_available() else "cpu",
     seed=42,
@@ -39,6 +41,10 @@ def main(
 
     model_name = "vit_base_patch14_reg4_dinov2.lvd142m"
     model = timm.create_model(model_name, pretrained=True)
+    for module in model.modules():
+        if isinstance(module, nn.LayerNorm):
+            module.weight.requires_grad_(False)
+            module.bias.requires_grad_(False)
     model.to(device)
     # Get model-specific transform (hard code it)
     # data_config = timm.data.resolve_data_config({}, model=model.base_model)
@@ -78,7 +84,7 @@ def main(
     # Define loss function and optimizer
     criterion_ssl = nn.CrossEntropyLoss(label_smoothing=0.8)
     criterion_sup = nn.CrossEntropyLoss()
-    backbone_optimizer = optim.AdamW(
+    backbone_optimizer = SING(
         model.parameters(),
         lr=learning_rate_backbone,
         weight_decay=weight_decay_backbone,
@@ -97,8 +103,25 @@ def main(
         W.parameters(), lr=learning_rate_W, weight_decay=weight_decay_W
     )
 
-    # Training loop
+    # Log parameters
+    params = {
+        "batch_size": batch_size,
+        "num_workers": num_workers,
+        "epochs": epochs,
+        "learning_rate_backbone": learning_rate_backbone,
+        "learning_rate_W": learning_rate_W,
+        "weight_decay_backbone": weight_decay_backbone,
+        "weight_decay_W": weight_decay_W,
+        "device": device,
+        "seed": seed,
+    }
     writer = SummaryWriter()
+    with open(Path(writer.log_dir) / "params.txt", "w") as f:
+        for key, value in params.items():
+            f.write(f"{key}: {value}\n")
+    writer.add_text("run/parameters", str(params))
+
+    # Training loop
     for epoch in range(epochs):
         model.train()
         running_loss = 0.0
